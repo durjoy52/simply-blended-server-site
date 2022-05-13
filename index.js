@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const { parse } = require("dotenv");
 const { json } = require("express/lib/response");
+const jwt = require('jsonwebtoken');
 const { query } = require("express");
 const app = express();
 const port = process.env.PORT || 5000;
@@ -11,6 +12,15 @@ const port = process.env.PORT || 5000;
 // middleware
 app.use(cors());
 app.use(express.json());
+
+function verifyJwt(req,res,next){
+  const authHeader = req.headers.authorization
+  if(!authHeader){
+    return res.status(401).send({message:'unauthorized access'})
+  }
+  console.log('inside verifyJWT',authHeader)
+  next()
+}
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.sctdy.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, {
@@ -24,6 +34,15 @@ async function run() {
     await client.connect();
     const userCollection = client.db("simply-blended").collection("juice");
 
+    // auth 
+    app.post('/login',async(req,res)=>{
+      const user = req.body;
+      const accessToken = jwt.sign(user,process.env.ACCESS_TOKEN_SECRET,{expiresIn:'1d'})
+      res.send(accessToken)
+    })
+
+
+    // services api 
     app.get("/products", async (req, res) => {
       const cursor = userCollection.find();
       const result = await cursor.toArray();
@@ -64,7 +83,6 @@ async function run() {
     app.put("/product/:id", async (req, res) => {
       const id = req.params.id;
       const updateData = req.body;
-      console.log(updateData)
       const filter = { _id: ObjectId(id) };
       const options = { upsert: true };
       const updateDoc = {
@@ -77,9 +95,9 @@ async function run() {
     });
 
     // get my items 
-    app.get('/myItems',async(req,res)=>{
+    app.get('/myItems',verifyJwt,async(req,res)=>{
       const email = req.query.email
-      const query = {email}
+      const query = {email:email}
       const cursor = userCollection.find(query)
       const result = await cursor.toArray()
       res.send(result)
